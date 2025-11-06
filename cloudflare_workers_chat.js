@@ -1,13 +1,7 @@
-import { Hono } from 'hono'
-import { serve } from '@hono/cloudflare-workers'
-
-// In-memory store for messages (will reset when worker restarts)
 const messages = []
 
-const app = new Hono()
-
-app.get('/', (c) => {
-  return c.html(`
+function renderHtml() {
+  return `
     <html>
       <head>
         <meta charset="UTF-8" />
@@ -59,17 +53,58 @@ app.get('/', (c) => {
         </script>
       </body>
     </html>
-  `)
-})
+  `
+}
 
-app.get('/messages', (c) => c.json(messages))
+async function handleMessages(request, method) {
+  if (method === 'GET') {
+    return new Response(JSON.stringify(messages), {
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+    })
+  }
 
-app.post('/messages', async (c) => {
-  const { name, text } = await c.req.json()
-  messages.push({ name, text, time: Date.now() })
-  if (messages.length > 100) messages.shift() // keep latest 100
-  return c.json({ ok: true })
-})
+  try {
+    const { name, text } = await request.json()
+    if (typeof text !== 'string' || text.trim() === '') {
+      return new Response(JSON.stringify({ ok: false, error: 'Message text is required.' }), {
+        status: 400,
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+      })
+    }
+    const entry = {
+      name: typeof name === 'string' && name.trim() ? name.trim() : 'Anonymous',
+      text: text.trim(),
+      time: Date.now(),
+    }
+    messages.push(entry)
+    if (messages.length > 100) {
+      messages.shift()
+    }
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+    })
+  } catch (error) {
+    return new Response(JSON.stringify({ ok: false, error: 'Invalid JSON body.' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+    })
+  }
+}
 
-export default app
-serve(app)
+export default {
+  async fetch(request) {
+    const url = new URL(request.url)
+
+    if (url.pathname === '/') {
+      return new Response(renderHtml(), {
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      })
+    }
+
+    if (url.pathname === '/messages' && (request.method === 'GET' || request.method === 'POST')) {
+      return handleMessages(request, request.method)
+    }
+
+    return new Response('Not found', { status: 404 })
+  },
+}
