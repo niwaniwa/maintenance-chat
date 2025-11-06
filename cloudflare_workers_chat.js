@@ -28,10 +28,22 @@ function renderHtml() {
           const messageEl = document.getElementById('message');
           const sendBtn = document.getElementById('send');
 
+          const escapeHtml = (value) => {
+            const span = document.createElement('span');
+            span.textContent = String(value ?? '');
+            return span.innerHTML;
+          };
+
           async function loadMessages() {
             const res = await fetch('/messages');
             const data = await res.json();
-            messagesEl.innerHTML = data.map(m => `<p><b>${m.name}</b>: ${m.text}</p>`).join('');
+            messagesEl.innerHTML = data
+              .map((m) => {
+                const safeName = escapeHtml(m.name);
+                const safeText = escapeHtml(m.text);
+                return '<p><b>' + safeName + '</b>: ' + safeText + '</p>';
+              })
+              .join('');
             messagesEl.scrollTop = messagesEl.scrollHeight;
           }
 
